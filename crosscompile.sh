@@ -91,6 +91,28 @@ function download {
     tar -xf "${PACKAGES}/${filename}" -C "${SOURCES}" || exit
 }
 
+function apply_patch {
+  local url=$1 # if you want it to use a local file instead of a url one [i.e. local file with local modifications] specify it like file://localhost/full/path/to/filename.patch
+  local patch_type=$2
+  if [[ -z $patch_type ]]; then
+    patch_type="-p0" # some are -p1 unfortunately, git's default
+  fi
+  local patch_name=$(basename $url)
+  local patch_done_name="$patch_name.done"
+  if [[ ! -e $patch_done_name ]]; then
+    if [[ -f $patch_name ]]; then
+      rm $patch_name || exit 1 # remove old version in case it has been since updated on the server...
+    fi
+    curl -4 --retry 5 $url -O --fail || echo_and_exit "unable to download patch file $url"
+    echo "applying patch $patch_name"
+    patch $patch_type < "$patch_name" || exit 1
+    touch $patch_done_name || exit 1
+    rm -f already_ran* # if it's a new patch, reset everything too, in case it's really really really new
+  #else
+    #echo "patch $patch_name already applied"
+  fi
+}
+
 
 # -----------------------------------------------------------------------------------------------------------
 # PREPARE
@@ -119,7 +141,11 @@ fi
 if [ ! -f ${PREFIX}/lib/libmp3lame.a ]; then
 begin ${LAME}
 download "http://kent.dl.sourceforge.net/project/lame/lame/3.99/${LAME}.tar.gz"
-./configure --host=$TRIPLET --prefix=$PREFIX --disable-shared --enable-static
+apply_patch file://${WORKSPACE}/patches/lame3.patch
+./configure --host=$TRIPLET --prefix=$PREFIX --disable-shared --enable-static \
+--enable-nasm \
+--disable-decoder \
+--disable-frontend
 make -j $MJOBS || exit
 make install
 end ${LAME}
@@ -231,19 +257,30 @@ if [ ! -f ${PREFIX}/lib/libx265.a ]; then
 begin ${X265}
 download "https://bitbucket.org/multicoreware/x265/downloads/${X265}.tar.gz"
 cd source
+if [ triplet = "i686-w64-mingw32" ]; then
 cmake \
 -G "Unix Makefiles" \
--DCMAKE_TOOLCHAIN_FILE="${WORKSPACE}/x86_64.cmake" \
+-DCMAKE_TOOLCHAIN_FILE="${WORKSPACE}/profiles/${TRIPLET}.cmake" \
+-DCMAKE_INSTALL_PREFIX=${PREFIX} \
+-DCMAKE_INSTALL_PREFIX:PATH=${PREFIX} \
+-DHIGH_BIT_DEPTH=ON \
+-DENABLE_CLI=ON \
+-DENABLE_ASSEMBLY=0 \
+-DWINXP_SUPPORT=1 \
+.
+else
+cmake \
+-G "Unix Makefiles" \
+-DCMAKE_TOOLCHAIN_FILE="${WORKSPACE}/profiles/${TRIPLET}.cmake" \
 -DCMAKE_INSTALL_PREFIX=${PREFIX} \
 -DCMAKE_INSTALL_PREFIX:PATH=${PREFIX} \
 -DHIGH_BIT_DEPTH=ON \
 -DENABLE_CLI=ON \
 -DENABLE_SHARED:bool=on \
 .
+fi
 make -j $MJOBS || exit
 make install
-rm "${PREFIX}/lib/libx265.dll.a"
-rm "${PREFIX}/bin/libx265.dll"
 end ${X265}
 fi
 
@@ -287,6 +324,10 @@ download "http://ffmpeg.org/releases/${FFMPEG}.tar.xz"
 --enable-libx265
 make -j $MJOBS || exit
 make install
+
+rm "${PREFIX}/lib/libx265.dll.a"
+rm "${PREFIX}/bin/libx265.dll"
+
 end ${FFMPEG}
 fi
 
@@ -313,7 +354,7 @@ echo "${FFMPEG}" >> README.txt
 
 triplet_array=(${TRIPLET//-/ })
 mkdir -p "${WORKSPACE}/build"
-zip -r "${WORKSPACE}/build/${FFMPEG}-windows-${triplet_array[0]}.zip" *
+zip -x "${PREFIX}/lib" "${PREFIX}/includes" -r "${WORKSPACE}/build/${FFMPEG}-windows-${triplet_array[0]}.zip" *
 
 
 
