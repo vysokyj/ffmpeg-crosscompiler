@@ -8,7 +8,7 @@ if [ $# -eq 0 ]; then
     exit
 fi
 
-if [ $1 = "x86_64-w64-mingw32" ] || [ $1 = "i686-w64-mingw32" ]; then
+if [ $1 == "i686-w64-mingw32" ] || [ $1 == "x86_64-w64-mingw32" ]; then
     TRIPLET=$1
 else 
     echo "Unsupported triplet $1"
@@ -50,10 +50,10 @@ export STRIP=$TRIPLET-strip
 
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig"
 
-if [ TRIPLET = "x86_64-w64-mingw32" ]; then 
-ARCH="x86_64"
+if [ TRIPLET == "i686-w64-mingw32" ]; then 
+    ARCH="x86"
 else
-ARCH="x86"
+    ARCH="x86_64"
 fi
 
 # Speed up the process
@@ -257,7 +257,7 @@ if [ ! -f ${PREFIX}/lib/libx265.a ]; then
 begin ${X265}
 download "https://bitbucket.org/multicoreware/x265/downloads/${X265}.tar.gz"
 cd source
-if [ triplet = "i686-w64-mingw32" ]; then
+if [ triplet == "i686-w64-mingw32" ]; then
 cmake \
 -G "Unix Makefiles" \
 -DCMAKE_TOOLCHAIN_FILE="${WORKSPACE}/profiles/${TRIPLET}.cmake" \
@@ -265,8 +265,9 @@ cmake \
 -DCMAKE_INSTALL_PREFIX:PATH=${PREFIX} \
 -DHIGH_BIT_DEPTH=ON \
 -DENABLE_CLI=ON \
--DENABLE_ASSEMBLY=0 \
+-DENABLE_ASSEMBLY=OFF \
 -DWINXP_SUPPORT=1 \
+-DENABLE_SHARED:bool=on \
 .
 else
 cmake \
@@ -276,7 +277,7 @@ cmake \
 -DCMAKE_INSTALL_PREFIX:PATH=${PREFIX} \
 -DHIGH_BIT_DEPTH=ON \
 -DENABLE_CLI=ON \
--DENABLE_SHARED:bool=on \
+-DENABLE_SHARED:bool=off \
 .
 fi
 make -j $MJOBS || exit
@@ -286,6 +287,8 @@ fi
 
 # -----------------------------------------------------------------------------------------------------------
 # FFMPEG
+
+# --extra-libs=-lstdc++ required for static x265!
 
 #--extra-version=static \
 #--extra-ldflags="-L$PREFIX/lib" \
@@ -298,30 +301,36 @@ fi
 if [ ! -f ${PREFIX}/bin/ffmpeg.exe ]; then
 begin ${FFMPEG}
 download "http://ffmpeg.org/releases/${FFMPEG}.tar.xz"
-./configure \
---arch=$ARCH \
---target-os=mingw32 \
---cross-prefix=$TRIPLET- \
---pkg-config=pkg-config \
---prefix=${PREFIX} \
---disable-debug \
---disable-ffplay \
---disable-ffserver \
---disable-doc \
---disable-shared \
---enable-static \
---enable-runtime-cpudetect \
---enable-gpl \
---enable-nonfree \
---enable-version3 \
---enable-libopencore_amrwb \
---enable-libopencore_amrnb \
---enable-libmp3lame \
---enable-libtheora \
---enable-libvorbis \
---enable-libfdk-aac \
---enable-libx264 \
---enable-libx265
+args="--arch=$ARCH"
+args+=" --target-os=mingw32"
+args+=" --cross-prefix=${TRIPLET}-"
+args+=" --pkg-config=pkg-config"
+args+=" --prefix=${PREFIX}"
+args+=" --disable-debug"
+args+=" --disable-ffplay"
+args+=" --disable-ffserver"
+args+=" --disable-doc"
+args+=" --disable-shared"
+args+=" --enable-static"
+args+=" --enable-runtime-cpudetect"
+args+=" --enable-gpl"
+args+=" --enable-nonfree"
+args+=" --enable-version3"
+args+=" --enable-libopencore_amrwb"
+args+=" --enable-libopencore_amrnb"
+args+=" --enable-libmp3lame"
+args+=" --enable-libtheora"
+args+=" --enable-libvorbis"
+args+=" --enable-libfdk-aac"
+args+=" --enable-libx264"
+args+=" --enable-libx265"
+args+=" --extra-libs=-lstdc++"
+args+=" --extra-cflags=--static"
+args+=" --extra-cflags=-DLIBTWOLAME_STATIC"
+args+=" --extra-cflags=-DMODPLUG_STATIC"
+args+=" --extra-cflags=-DCACA_STATIC"
+echo $args
+./configure $args
 make -j $MJOBS || exit
 make install
 
