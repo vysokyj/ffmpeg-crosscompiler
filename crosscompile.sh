@@ -8,7 +8,7 @@ if [ $# -eq 0 ]; then
     exit
 fi
 
-if [ $1 == "i686-w64-mingw32" ] || [ $1 == "x86_64-w64-mingw32" ]; then
+if [ $1 = "i686-w64-mingw32" ] || [ $1 = "x86_64-w64-mingw32" ]; then
     TRIPLET=$1
 else 
     echo "Unsupported triplet $1"
@@ -33,7 +33,7 @@ FFMPEG="ffmpeg-3.3.4"
 # ENVIRONMENT
 
 WORKSPACE="$(pwd)"
-PACKAGES="/tmp/ffmpeg-crosscompile"
+PACKAGES="/tmp/ffmpeg-crosscompile/packages"
 SOURCES="/tmp/ffmpeg-crosscompile/${TRIPLET}"
 PREFIX="/tmp/${TRIPLET}"
 
@@ -47,6 +47,8 @@ export AS=$TRIPLET-as
 export LD=$TRIPLET-ld
 export NM=$TRIPLET-nm
 export STRIP=$TRIPLET-strip
+export CFLAGS="-O3 -pipe"
+export CXXFLAGS="${CFLAGS}"
 
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig"
 
@@ -263,10 +265,10 @@ cmake \
 -DCMAKE_TOOLCHAIN_FILE="${WORKSPACE}/profiles/${TRIPLET}.cmake" \
 -DCMAKE_INSTALL_PREFIX=${PREFIX} \
 -DCMAKE_INSTALL_PREFIX:PATH=${PREFIX} \
--DHIGH_BIT_DEPTH=ON \
 -DENABLE_CLI=ON \
+-DHIGH_BIT_DEPTH=ON \
 -DENABLE_ASSEMBLY=OFF \
--DWINXP_SUPPORT=1 \
+-DWINXP_SUPPORT=0 \
 -DENABLE_SHARED:bool=on \
 .
 else
@@ -301,21 +303,36 @@ fi
 if [ ! -f ${PREFIX}/bin/ffmpeg.exe ]; then
 begin ${FFMPEG}
 download "http://ffmpeg.org/releases/${FFMPEG}.tar.xz"
+
+# set toolchain
 args="--arch=$ARCH"
+args+=" --prefix=${PREFIX}"
 args+=" --target-os=mingw32"
 args+=" --cross-prefix=${TRIPLET}-"
-args+=" --pkg-config=pkg-config"
-args+=" --prefix=${PREFIX}"
 args+=" --disable-debug"
+args+=" --enable-runtime-cpudetect"  # not found in documentaiton
+args+=" --pkg-config=pkg-config"
+args+=" --pkg-config-flags=--static" # fix libx265
+args+=" --extra-libs=-lstdc++"       # fix libx265
+args+=" --extra-cflags=--static"     # fix libx265
+
+# configuration options
+args+=" --disable-shared" # not found via help?
+args+=" --enable-static" # not found via help?
+
+# program options
 args+=" --disable-ffplay"
 args+=" --disable-ffserver"
+
+# documentaion options
 args+=" --disable-doc"
-args+=" --disable-shared"
-args+=" --enable-static"
-args+=" --enable-runtime-cpudetect"
+
+# enable all licenses
 args+=" --enable-gpl"
-args+=" --enable-nonfree"
 args+=" --enable-version3"
+args+=" --enable-nonfree"
+
+# enable external libraries
 args+=" --enable-libopencore_amrwb"
 args+=" --enable-libopencore_amrnb"
 args+=" --enable-libmp3lame"
@@ -324,18 +341,15 @@ args+=" --enable-libvorbis"
 args+=" --enable-libfdk-aac"
 args+=" --enable-libx264"
 args+=" --enable-libx265"
-args+=" --extra-libs=-lstdc++"
-args+=" --extra-cflags=--static"
-args+=" --extra-cflags=-DLIBTWOLAME_STATIC"
-args+=" --extra-cflags=-DMODPLUG_STATIC"
-args+=" --extra-cflags=-DCACA_STATIC"
-echo $args
+
+# process it...
+echo "./configure ${args}"
 ./configure $args
 make -j $MJOBS || exit
 make install
 
-rm "${PREFIX}/lib/libx265.dll.a"
-rm "${PREFIX}/bin/libx265.dll"
+#rm "${PREFIX}/lib/libx265.dll.a"
+#rm "${PREFIX}/bin/libx265.dll"
 
 end ${FFMPEG}
 fi
@@ -364,10 +378,4 @@ echo "${FFMPEG}" >> README.txt
 triplet_array=(${TRIPLET//-/ })
 mkdir -p "${WORKSPACE}/build"
 zip -x "${PREFIX}/lib" "${PREFIX}/includes" -r "${WORKSPACE}/build/${FFMPEG}-windows-${triplet_array[0]}.zip" *
-
-
-
-
-
-
 
